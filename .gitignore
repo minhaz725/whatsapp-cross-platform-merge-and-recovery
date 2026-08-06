@@ -1,0 +1,23 @@
+# NEVER publish. this unlocks every backup made while end-to-end backup was on,
+# and there is no reset and no support recovery.
+work/encrypted_backup.key
+*.key
+
+# message data. decrypted databases, encrypted backups, extracted media.
+*.db
+*.crypt12
+*.crypt14
+*.crypt15
+media_out/
+WA-ARCHIVE-*/
+WA-coldcopy-*/
+com.whatsapp/
+
+# personal operational record: account details, device timeline
+WA-RECOVERY-BRIEF.md
+
+# local environment
+.wa-venv/
+__pycache__/
+*.pyc
+.DS_Store
