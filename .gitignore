@@ -13,9 +13,6 @@ WA-ARCHIVE-*/
 WA-coldcopy-*/
 com.whatsapp/
 
-# personal operational record: account details, device timeline
-WA-RECOVERY-BRIEF.md
-
 # local environment
 .wa-venv/
 __pycache__/
