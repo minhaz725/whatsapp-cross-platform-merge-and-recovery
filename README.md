@@ -255,7 +255,7 @@ physically exists.
 | `work/conform.py` | compare generated rows against WhatsApp's own distributions |
 | `work/fixsort.py` | chronological ordering and chat-list repair |
 | `work/attach_media.py` | copy media into WhatsApp's tree and link it to messages |
-| `work/fixids.py` | remap `message._id` chronologically across 209 referencing columns |
+| `work/fixids.py` | remap `message._id` chronologically across 209 referencing columns; optional third argument = seam in ms |
 | `work/jidcheck.py`, `work/lidmap.py` | diagnostics for matching contacts across schemas |
 | `work/wa_extract2.py` | render an iOS container to readable transcripts, CSVs and media |
 
@@ -309,6 +309,36 @@ Gotchas that cost real time:
 - Uninstalling deletes `Android/media/com.whatsapp`. Recreate the folder structure by
   hand afterwards, or extract an archive containing the full path.
 - **Never tap "Delete backup" in Google Drive** if it is your only generation.
+
+## Moving the result to an iPhone
+
+Apple's Move to iOS app also depends on `sort_id = _id`. Run `work/fixids.py` before you
+export, with your own seam: `python3 work/fixids.py IN.db OUT.db SEAM_MS`.
+
+- **The export stops at the row with the highest `sort_id`.** WhatsApp walks `_id` from 1
+  up to the `_id` of that row. A row above it is not exported, and nothing tells you.
+- **The iPhone orders each chat by the Android `_id`.** The chat list uses the timestamp,
+  so the preview looks right, but rows with a high `_id` show at the bottom of the chat.
+
+Both checks must return 0 before the export:
+
+```sql
+-- rows the export would skip
+SELECT count(*) FROM message
+WHERE _id > (SELECT _id FROM available_message_view ORDER BY sort_id DESC LIMIT 1);
+
+-- places where _id order and time order differ inside a chat
+SELECT count(*) FROM (
+  SELECT timestamp t,
+         lag(timestamp) OVER (PARTITION BY chat_row_id ORDER BY _id) p
+  FROM message
+) WHERE t < p;
+```
+
+The second check counts every chat. If rows before your seam were already out of order,
+it stays above 0 after `fixids.py`; only the rows after the seam are renumbered.
+
+Push names, view-once media, calls, polls and most system messages do not transfer.
 
 ## Not included
 
