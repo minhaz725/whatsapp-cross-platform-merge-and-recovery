@@ -16,7 +16,9 @@ import sqlite3, shutil, os
 import sys
 SRC = sys.argv[1] if len(sys.argv)>1 else 'MEDIA.db'
 OUT = sys.argv[2] if len(sys.argv)>2 else 'FINAL.db'
-SEAM_MS = 1782198302000
+# first moment of the merged block, in ms. the default is the seam of the original
+# recovery; pass your own as the third argument.
+SEAM_MS = int(sys.argv[3]) if len(sys.argv)>3 else 1782198302000
 
 if os.path.exists(OUT):
     os.remove(OUT)
@@ -59,6 +61,19 @@ for t, c in refs:
 db.execute('UPDATE message SET _id=(SELECT new FROM _idmap WHERE old=message._id) '
            'WHERE _id IN (SELECT old FROM _idmap)')
 
+# the full-text index keys each entry by docid = message._id. moved rows must take
+# their entry with them, else search can no longer find them: the old ids are empty now.
+fts_before = 0
+if db.execute("SELECT 1 FROM sqlite_master WHERE name='message_ftsv2'").fetchone():
+    fts_cols = [r[1] for r in db.execute('PRAGMA table_info(message_ftsv2)')]
+    fts_before = db.execute('SELECT COUNT(*) FROM message_ftsv2').fetchone()[0]
+    col_list = ', '.join(f'"{c}"' for c in fts_cols)
+    moved = db.execute(f'SELECT m.new, {col_list} FROM message_ftsv2 f JOIN _idmap m ON m.old=f.docid').fetchall()
+    db.execute('DELETE FROM message_ftsv2 WHERE docid IN (SELECT old FROM _idmap)')
+    db.executemany(f'INSERT INTO message_ftsv2(docid, {col_list}) VALUES ({", ".join("?" * (len(fts_cols) + 1))})',
+                   moved)
+    print(f'full-text entries moved with their rows: {len(moved)}')
+
 # whatsapp's invariant, restored for every row
 db.execute('UPDATE message SET sort_id=_id')
 
@@ -97,6 +112,15 @@ mx_id, mx_sort = db.execute('SELECT MAX(_id), MAX(sort_id) FROM message').fetcho
 print(f'  max _id / max sort_id: {mx_id} / {mx_sort}  (must be equal)')
 print('  rows where sort_id<>_id:', db.execute(
     'SELECT COUNT(*) FROM message WHERE sort_id<>_id').fetchone()[0])
+
+if fts_before:
+    print('  full-text entries  :', fts_before, '->',
+          db.execute('SELECT COUNT(*) FROM message_ftsv2').fetchone()[0])
+    print('  full-text entries of moved rows left on an empty id:', db.execute(
+        'SELECT COUNT(*) FROM message_ftsv2_docsize WHERE docid IN (SELECT old FROM _idmap) '
+        'AND docid NOT IN (SELECT _id FROM message)').fetchone()[0])
+    db.execute("INSERT INTO message_ftsv2(message_ftsv2) VALUES('integrity-check')")
+    print('  full-text integrity: ok')
 
 seq = db.execute('SELECT _id,timestamp FROM message WHERE timestamp>? ORDER BY _id',
                  (SEAM_MS,)).fetchall()
